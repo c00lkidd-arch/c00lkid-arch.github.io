@@ -80,6 +80,9 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .conversation-item:hover {
@@ -89,6 +92,21 @@
         .conversation-item.active {
             background: #667eea;
             color: white;
+        }
+
+        .delete-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .conversation-item:hover .delete-btn {
+            display: block;
         }
 
         .chat-area {
@@ -202,33 +220,6 @@
             color: #999;
             font-size: 16px;
         }
-
-        .setup-area {
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .setup-input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .setup-button {
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 600;
-        }
     </style>
 </head>
 <body>
@@ -264,42 +255,76 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000/api';
         let currentConversation = null;
         let senderName = 'User';
 
+        // Load messages from localStorage
+        function getMessages() {
+            const data = localStorage.getItem('messaging_app_db');
+            return data ? JSON.parse(data) : [];
+        }
+
+        // Save messages to localStorage
+        function saveMessages(messages) {
+            localStorage.setItem('messaging_app_db', JSON.stringify(messages));
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            loadConversations();
-            document.getElementById('senderName').value = senderName;
+            const savedName = localStorage.getItem('user_name');
+            if (savedName) {
+                senderName = savedName;
+                document.getElementById('senderName').value = senderName;
+            }
+
             document.getElementById('senderName').addEventListener('change', (e) => {
                 senderName = e.target.value || 'User';
+                localStorage.setItem('user_name', senderName);
             });
+
+            loadConversations();
+
+            // Auto-refresh messages every 1 second
+            setInterval(() => {
+                if (currentConversation) {
+                    loadMessages();
+                }
+            }, 1000);
         });
 
-        async function loadConversations() {
-            try {
-                const response = await fetch(`${API_URL}/conversations`);
-                const conversations = await response.json();
-                const list = document.getElementById('conversationsList');
-                list.innerHTML = '';
+        function loadConversations() {
+            const messages = getMessages();
+            const conversations = [...new Set(messages.map(msg => msg.conversation))].sort();
+            const list = document.getElementById('conversationsList');
+            list.innerHTML = '';
 
-                if (conversations.length === 0) {
-                    list.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No conversations yet</div>';
-                    return;
-                }
-
-                conversations.forEach(conv => {
-                    const div = document.createElement('div');
-                    div.className = 'conversation-item';
-                    if (conv === currentConversation) div.classList.add('active');
-                    div.textContent = conv;
-                    div.onclick = () => selectConversation(conv);
-                    list.appendChild(div);
-                });
-            } catch (error) {
-                console.error('Error loading conversations:', error);
+            if (conversations.length === 0) {
+                list.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No conversations yet</div>';
+                return;
             }
+
+            conversations.forEach(conv => {
+                const div = document.createElement('div');
+                div.className = 'conversation-item';
+                if (conv === currentConversation) div.classList.add('active');
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = conv;
+                nameSpan.style.flex = '1';
+                nameSpan.onclick = () => selectConversation(conv);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteConversation(conv);
+                };
+
+                div.appendChild(nameSpan);
+                div.appendChild(deleteBtn);
+                list.appendChild(div);
+            });
         }
 
         function selectConversation(conversation) {
@@ -309,36 +334,32 @@
             loadConversations();
         }
 
-        async function loadMessages() {
-            try {
-                const response = await fetch(`${API_URL}/messages/${currentConversation}`);
-                const messages = await response.json();
-                const container = document.getElementById('messagesContainer');
-                container.innerHTML = '';
+        function loadMessages() {
+            const messages = getMessages();
+            const conversationMessages = messages.filter(msg => msg.conversation === currentConversation);
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '';
 
-                if (messages.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No messages in this conversation yet</div>';
-                    return;
-                }
-
-                messages.forEach(msg => {
-                    const msgEl = document.createElement('div');
-                    msgEl.className = `message ${msg.sender === senderName ? 'sent' : 'received'}`;
-                    const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    msgEl.innerHTML = `
-                        <div>${msg.text}</div>
-                        <div class="message-time">${msg.sender} • ${time}</div>
-                    `;
-                    container.appendChild(msgEl);
-                });
-
-                container.scrollTop = container.scrollHeight;
-            } catch (error) {
-                console.error('Error loading messages:', error);
+            if (conversationMessages.length === 0) {
+                container.innerHTML = '<div class="empty-state">No messages in this conversation yet</div>';
+                return;
             }
+
+            conversationMessages.forEach(msg => {
+                const msgEl = document.createElement('div');
+                msgEl.className = `message ${msg.sender === senderName ? 'sent' : 'received'}`;
+                const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                msgEl.innerHTML = `
+                    <div>${escapeHtml(msg.text)}</div>
+                    <div class="message-time">${escapeHtml(msg.sender)} • ${time}</div>
+                `;
+                container.appendChild(msgEl);
+            });
+
+            container.scrollTop = container.scrollHeight;
         }
 
-        async function sendMessage() {
+        function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
 
@@ -348,22 +369,20 @@
                 return;
             }
 
-            try {
-                await fetch(`${API_URL}/messages`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text,
-                        sender: senderName,
-                        conversation: currentConversation
-                    })
-                });
+            const messages = getMessages();
+            const newMessage = {
+                id: Date.now().toString(),
+                text,
+                sender: senderName,
+                conversation: currentConversation,
+                timestamp: new Date().toISOString()
+            };
 
-                input.value = '';
-                loadMessages();
-            } catch (error) {
-                console.error('Error sending message:', error);
-            }
+            messages.push(newMessage);
+            saveMessages(messages);
+
+            input.value = '';
+            loadMessages();
         }
 
         function handleKeyPress(event) {
@@ -381,16 +400,44 @@
                 return;
             }
 
+            const messages = getMessages();
+            if (messages.some(m => m.conversation === name)) {
+                alert('Conversation already exists');
+                return;
+            }
+
             selectConversation(name);
             input.value = '';
         }
 
-        // Auto-refresh messages every 2 seconds
-        setInterval(() => {
-            if (currentConversation) {
-                loadMessages();
+        function deleteConversation(conversation) {
+            if (!confirm(`Delete conversation "${conversation}"? This cannot be undone.`)) {
+                return;
             }
-        }, 2000);
+
+            const messages = getMessages();
+            const filtered = messages.filter(msg => msg.conversation !== conversation);
+            saveMessages(filtered);
+
+            if (currentConversation === conversation) {
+                currentConversation = null;
+                document.getElementById('chatTitle').textContent = 'Select a conversation';
+                document.getElementById('messagesContainer').innerHTML = '<div class="empty-state">No messages yet. Start a conversation!</div>';
+            }
+
+            loadConversations();
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
     </script>
 </body>
 </html>
