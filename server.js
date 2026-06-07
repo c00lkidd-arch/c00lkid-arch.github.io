@@ -15,7 +15,7 @@ const octokit = new Octokit({
 });
 
 const OWNER = 'c00lkidd-arch';
-const REPO = 'c00lkid-arch.github.io';
+const REPO = 'c00lkidd-arch.github.io/c00lkid-arch.github.io/';
 const MESSAGES_PATH = 'messages.json';
 
 // Helper function to get messages file
